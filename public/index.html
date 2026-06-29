@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Cab Route Optimizer — Hyderabad</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0f14; --surface: #161920; --border: #252830;
+    --accent: #f5a623; --accent2: #e8522a; --blue: #3b82f6;
+    --text: #e8eaf0; --muted: #6b7280; --green: #22c55e; --red: #ef4444;
+  }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  header { padding: 14px 24px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .logo-text { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; }
+  .logo-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+  .peak-indicator { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .peak-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .peak-dot.active { background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  .sidebar { width: 340px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
+  .panel { padding: 18px 20px; border-bottom: 1px solid var(--border); }
+  .panel-title { font-size: 10px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+
+  label { display: block; font-size: 11px; font-weight: 500; color: var(--muted); margin-bottom: 5px; margin-top: 12px; }
+  label:first-of-type { margin-top: 0; }
+
+  select, input[type=number] {
+    width: 100%; padding: 9px 12px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px;
+    appearance: none; transition: border-color 0.15s;
+  }
+  select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; cursor: pointer; }
+  select:focus, input:focus { outline: none; border-color: var(--accent); }
+
+  .hour-row { display: flex; gap: 8px; align-items: flex-end; }
+  .hour-row input { flex: 1; }
+  .now-btn { padding: 9px 12px; background: var(--border); border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.15s; }
+  .now-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .traffic-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 20px; margin-left: 6px; }
+  .traffic-badge.peak { background: rgba(239,68,68,0.2); color: var(--red); }
+  .traffic-badge.offpeak { background: rgba(34,197,94,0.15); color: var(--green); }
+
+  .go-btn { width: 100%; padding: 11px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; border-radius: 6px; color: #fff; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 16px; transition: opacity 0.15s; }
+  .go-btn:hover { opacity: 0.9; }
+  .go-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Comparison table */
+  .compare-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+  .compare-table th { font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+  .compare-table td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .compare-table tr:last-child td { border-bottom: none; }
+  .compare-table .label-cell { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .val-dist { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--accent); }
+  .val-time { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--blue); }
+
+  .path-label { font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); margin: 14px 0 8px; }
+
+  .path-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .path-col-title { font-size: 10px; font-weight: 600; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.8px; }
+
+  .path-list { list-style: none; }
+  .path-list li { display: flex; align-items: center; gap: 8px; font-size: 11px; padding: 3px 0; }
+  .path-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+  .path-dot.first { background: var(--green); }
+  .path-dot.last  { background: var(--red); }
+  .path-dot.blue  { background: var(--blue); }
+  .path-connector { width: 1px; height: 10px; background: var(--border); margin-left: 3px; }
+
+  .error-msg { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 6px; padding: 10px 12px; font-size: 12px; color: var(--red); display: none; }
+  .error-msg.visible { display: block; }
+  .result-empty { color: var(--muted); font-size: 12px; text-align: center; margin-top: 20px; line-height: 1.6; }
+  .result-card { display: none; }
+  .result-card.visible { display: block; }
+
+  #map { flex: 1; }
+
+  .legend { position: absolute; bottom: 30px; right: 10px; z-index: 1000; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 11px; }
+  .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+  .legend-item:last-child { margin-bottom: 0; }
+  .legend-line { width: 20px; height: 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🛺</div>
+    <div>
+      <div class="logo-text">Cab Route Optimizer</div>
+      <div class="logo-sub">Hyderabad · Dijkstra Engine</div>
+    </div>
+  </div>
+  <div class="peak-indicator">
+    <div class="peak-dot" id="headerPeakDot"></div>
+    <span id="headerPeakText" style="color:var(--muted)">Off-peak</span>
+  </div>
+</header>
+
+<div class="main">
+  <aside class="sidebar">
+    <div class="panel">
+      <div class="panel-title">Route Planner</div>
+
+      <label>FROM</label>
+      <select id="from"></select>
+
+      <label>TO</label>
+      <select id="to"></select>
+
+      <label>HOUR OF TRAVEL</label>
+      <div class="hour-row">
+        <input type="time" id="hourInput" value="09:00"/>
+        <button class="now-btn" id="nowBtn">Now</button>
+      </div>
+      <div id="trafficStatus" style="margin-top:6px; font-size:11px; color:var(--muted)"></div>
+
+      <button class="go-btn" id="goBtn">Find Route →</button>
+    </div>
+
+    <div class="panel" style="flex:1">
+      <div class="panel-title">Comparison</div>
+      <div class="result-empty" id="emptyState">Select locations and hit Find Route</div>
+      <div class="error-msg" id="errorMsg"></div>
+
+      <div class="result-card" id="resultCard">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>📏 Distance</th>
+              <th>⏱ Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="label-cell">Cost</td>
+              <td><span class="val-dist" id="cmpDist">—</span></td>
+              <td><span class="val-time" id="cmpTime">—</span></td>
+            </tr>
+            <tr>
+              <td class="label-cell">Stops</td>
+              <td id="cmpDistStops">—</td>
+              <td id="cmpTimeStops">—</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="path-label">Paths</div>
+        <div class="path-cols">
+          <div>
+            <div class="path-col-title" style="color:var(--accent)">Distance</div>
+            <ul class="path-list" id="pathDist"></ul>
+          </div>
+          <div>
+            <div class="path-col-title" style="color:var(--blue)">Time</div>
+            <ul class="path-list" id="pathTime"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div style="position:relative; flex:1">
+    <div id="map" style="width:100%;height:100%"></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-line" style="background:var(--accent)"></div> Shortest distance</div>
+      <div class="legend-item"><div class="legend-line" style="background:var(--blue)"></div> Fastest time</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const LOCATIONS = {
+  "Gachibowli":    [17.4401, 78.3489],
+  "HitechCity":    [17.4486, 78.3908],
+  "Madhapur":      [17.4485, 78.4108],
+  "JubileeHills":  [17.4325, 78.4071],
+  "BanjaraHills":  [17.4156, 78.4347],
+  "Ameerpet":      [17.4374, 78.4487],
+  "Begumpet":      [17.4448, 78.4698],
+  "Secunderabad":  [17.4399, 78.4983],
+  "Kukatpally":    [17.4849, 78.4138],
+  "LBNagar":       [17.3464, 78.5521],
+  "MGBS":          [17.3850, 78.4867],
+  "Charminar":     [17.3616, 78.4747],
+  "Dilsukhnagar":  [17.3688, 78.5267],
+  "Uppal":         [17.4053, 78.5592],
+  "KPHB":          [17.4946, 78.3914],
+  "Miyapur":       [17.4963, 78.3496],
+};
+
+const map = L.map('map').setView([17.4065, 78.4772], 12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+
+const markers = {};
+Object.entries(LOCATIONS).forEach(([name, coords]) => {
+  markers[name] = L.circleMarker(coords, {
+    radius: 7, fillColor: '#f5a623', color: '#fff', weight: 2, fillOpacity: 1
+  }).addTo(map).bindTooltip(name, { permanent: false, direction: 'top' });
+});
+
+// Populate dropdowns
+const cities = Object.keys(LOCATIONS);
+['from','to'].forEach(id => {
+  const sel = document.getElementById(id);
+  cities.forEach(c => sel.add(new Option(c, c)));
+});
+document.getElementById('from').value = 'Gachibowli';
+document.getElementById('to').value   = 'LBNagar';
+
+// Hour / traffic status
+const hourInput = document.getElementById('hourInput');
+document.getElementById('nowBtn').addEventListener('click', () => {
+  const now = new Date();
+  hourInput.value = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  updateTrafficStatus();
+});
+hourInput.addEventListener('input', updateTrafficStatus);
+
+function isPeakHour(h) { return (h >= 8 && h <= 10) || (h >= 17 && h <= 20); }
+
+function updateTrafficStatus() {
+  const h = parseInt(hourInput.value.split(':')[0]);
+  const peak = isPeakHour(h);
+  const statusEl = document.getElementById('trafficStatus');
+  const dot = document.getElementById('headerPeakDot');
+  const txt = document.getElementById('headerPeakText');
+  statusEl.innerHTML = peak
+    ? '<span class="traffic-badge peak">🔴 Peak Hour — traffic multiplier active</span>'
+    : '<span class="traffic-badge offpeak">🟢 Off-peak — normal traffic</span>';
+  dot.classList.toggle('active', peak);
+  txt.textContent = peak ? 'Peak hour' : 'Off-peak';
+  txt.style.color = peak ? 'var(--red)' : 'var(--muted)';
+}
+updateTrafficStatus();
+
+// Route lines
+let lines = [];
+function clearRoutes() {
+  lines.forEach(l => map.removeLayer(l));
+  lines = [];
+  Object.values(markers).forEach(m => m.setStyle({ fillColor: '#f5a623', radius: 7 }));
+}
+
+function drawPath(path, color, offset) {
+  const coords = path.map(n => LOCATIONS[n]);
+  const line = L.polyline(coords, { color, weight: 4, opacity: 0.85 }).addTo(map);
+  lines.push(line);
+  return line;
+}
+
+function buildPathList(path, listId, dotColor) {
+  const ul = document.getElementById(listId);
+  ul.innerHTML = '';
+  path.forEach((stop, i) => {
+    if (i > 0) {
+      const conn = document.createElement('li');
+      conn.innerHTML = '<div class="path-connector" style="margin-left:3px"></div>';
+      ul.appendChild(conn);
+    }
+    const li = document.createElement('li');
+    const cls = i === 0 ? 'first' : i === path.length - 1 ? 'last' : dotColor;
+    li.innerHTML = `<div class="path-dot ${cls}"></div><span>${stop}</span>`;
+    ul.appendChild(li);
+  });
+}
+
+document.getElementById('goBtn').addEventListener('click', async () => {
+  const from = document.getElementById('from').value;
+  const to   = document.getElementById('to').value;
+  const hour = parseInt(hourInput.value.split(":")[0]);
+  const btn  = document.getElementById('goBtn');
+
+  if (from === to) { showError('Source and destination must be different.'); return; }
+  if (isNaN(hour)) { showError("Enter a valid time."); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Routing…';
+  clearRoutes();
+  hideResult();
+
+  try {
+    const res  = await fetch(`/route?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&hour=${hour}`);
+    const data = await res.json();
+    if (data.error) { showError(data.error); return; }
+
+    // Draw both routes
+    const distLine = drawPath(data.distance.path, '#f5a623');
+    const timeLine = drawPath(data.time.path, '#3b82f6');
+
+    // Fit map to combined bounds
+    const allCoords = [...data.distance.path, ...data.time.path].map(n => LOCATIONS[n]);
+    map.fitBounds(L.latLngBounds(allCoords), { padding: [40, 40] });
+
+    // Style start/end
+    const dPath = data.distance.path;
+    const tPath = data.time.path;
+    if (markers[dPath[0]]) markers[dPath[0]].setStyle({ fillColor: '#22c55e', radius: 9 });
+    if (markers[dPath[dPath.length-1]]) markers[dPath[dPath.length-1]].setStyle({ fillColor: '#ef4444', radius: 9 });
+
+    // Fill comparison table
+    document.getElementById('cmpDist').textContent      = data.distance.totalCost + ' km';
+    document.getElementById('cmpTime').textContent      = data.time.totalCost + ' min';
+    document.getElementById('cmpDistStops').textContent = data.distance.path.length;
+    document.getElementById('cmpTimeStops').textContent = data.time.path.length;
+
+    buildPathList(data.distance.path, 'pathDist', '');
+    buildPathList(data.time.path,     'pathTime',  'blue');
+
+    document.getElementById('emptyState').style.display = 'none';
+    document.getElementById('errorMsg').classList.remove('visible');
+    document.getElementById('resultCard').classList.add('visible');
+
+  } catch(e) {
+    showError('Failed to connect to server.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Find Route →';
+  }
+});
+
+function showError(msg) {
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('resultCard').classList.remove('visible');
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg; el.classList.add('visible');
+}
+function hideResult() {
+  document.getElementById('resultCard').classList.remove('visible');
+  document.getElementById('errorMsg').classList.remove('visible');
+  document.getElementById('emptyState').style.display = 'block';
+}
+</script>
+</body>
+</html>
